@@ -237,3 +237,149 @@ from transaction_filter
 Было бы здорово, чтобы в подписке пользователи могли отслуживать свой прогресс, а также получать рекомендаци. 
 Также оставить пробный период, чтобы привлечь больше пользователей и показать ценность подписки.
 Предоставлять бонусы и скидки на подписку для пользователей с высоким рейтингом и активностью. Давать возможность продвинутым пользователям самим предлагать новые задачи и тесты и получать за них какие-нибудь бонусы. (если был предложен действительно стоящий материал)
+## **Дополнительное задание**
+1. Предлагаю посчитать:
+* Количетсво регистраций пользователей по месяцам
+* Количетсво пользователей, которые решали задачи по месяцам
+* Количетсво зашедших пользователей на сайт по месяцам
+```sql
+with users_act as(
+	select
+		to_char(created_at, 'YYYY-MM') as month,
+		user_id
+	from coderun
+	union all
+	select
+		 to_char(created_at, 'YYYY-MM') as month,
+		 user_id
+	from codesubmit c  
+	union all
+	select
+		to_char(created_at, 'YYYY-MM') as month,
+		user_id
+	from teststart t 
+	),
+cnt_reg_users as(
+	select
+		 to_char(date_joined, 'YYYY-MM') as month,
+		 count(distinct id) as cnt_registr
+	from users
+	group by month),
+cnt_act_users as(
+	select
+		month,
+		count(distinct user_id) as cnt_activities
+	from users_act
+	group by month),
+cnt_us_inputs as (
+	select
+		to_char(entry_at, 'YYYY-MM') as month,
+		count(distinct user_id) as cnt_users_inputs
+	from userentry u 
+	group by month)
+select
+	cau.month,
+	coalesce(cnt_registr,0) as cnt_registr,
+	coalesce(cnt_activities, 0) as cnt_activities, 
+	coalesce(cnt_users_inputs, 0) as cnt_users_inputs
+from cnt_reg_users cru
+full join cnt_act_users cau
+on cau.month = cru.month
+full join cnt_us_inputs cui
+on cau.month = cui.month
+order by cru.month
+```
+```
+month  |cnt_registr|cnt_activities|cnt_users_inputs|
+-------+-----------+--------------+----------------+
+2021-03|          5|             8|               3|
+2021-04|         15|            21|              17|
+2021-05|          6|            19|               0|
+2021-06|          6|             1|               0|
+2021-07|          2|             1|               0|
+2021-08|          1|             1|               2|
+2021-09|         13|             4|               4|
+2021-10|          8|             2|               3|
+2021-11|        210|           124|             189|
+2021-12|        132|           126|             202|
+2022-01|        602|           444|             584|
+2022-02|       1058|           803|            1061|
+2022-03|        479|           369|             575|
+2022-04|        237|           235|             535|
+2022-05|          0|            58|             435|
+```
+Анализируя данные показатели мы видим заинтересованность в продукте по месяцам. Это нужно для того, чтобы в те периоды, когда идет спад спроса, можно было запускать дополнительные акциии. Чтобы привлечь новых пользователей. Очень хорошие показатели были за февраль 22 года. Было много регистраций, активностей. Нужно проанализировать, что послужило такому скачку. Возможно была запущена какая-то акция или удачная реклама, которая привлекла много пользователей. Для того, чтобы запускать платные подписки, нужно получить хороший и достаточно стабильный поток новых пользователей. К примеру в мае 22 года вообще не было регистраций новых пользователей, а старые практически не решали задачи. Что послужило такому резкому спаду?
+
+2. Посчитаем с разбивкой по языкам программирование какие задания и в каком количестве вызывают затруднения у пользователей.
+```sql
+with difficult_tasks_py as(
+	select
+		problem_id, 
+		name, 
+		sum(case when is_false = 1 then 1 else 0 end) as sum
+	from codesubmit c
+	join language l	
+	on c.language_id = l.id
+	where language_id = 2
+	group by problem_id, name
+	order by sum desc
+),
+difficult_tasks_sql as(
+	select 
+			problem_id, 
+			name, 
+			sum(case when is_false = 1 then 1 else 0 end) as sum
+	from codesubmit c
+	join language l
+	on c.language_id = l.id
+	where language_id = 3
+	group by problem_id, name
+	order by sum desc
+)
+select
+	 problem_id, 
+	 name, sum from
+	difficult_tasks_sql
+	where sum > (select avg(sum) from difficult_tasks_py) * 1.5
+	union all
+	select
+		 problem_id, 
+		 name, 
+		 sum
+  from difficult_tasks_py
+ where sum > (select avg(sum) from difficult_tasks_py) * 1.5
+ ```
+ ```
+ problem_id|name  |sum|
+----------+------+---+
+       166|Python|720|
+        38|Python|321|
+       171|Python|312|
+         1|Python|211|
+        40|Python|191|
+        11|Python|184|
+        42|Python|183|
+         9|Python|175|
+       111|Python|166|
+       167|Python|160|
+        43|Python|145|
+         2|Python|136|
+       169|SQL   |649|
+       168|SQL   |595|
+        69|SQL   |361|
+        74|SQL   |233|
+        71|SQL   |223|
+        63|SQL   |208|
+        70|SQL   |208|
+       170|SQL   |201|
+        76|SQL   |175|
+        67|SQL   |153|
+       135|SQL   |150|
+        68|SQL   |148|
+        77|SQL   |146|
+        64|SQL   |142|
+       123|SQL   |142|
+   ``` 
+Так как на платформе имеется достаточно большое количество задач, вызывающих трудности, это представляет хорошую возможность для внедрения платной подписки. Для платных подписчиков можно предложить более детализированные и пошаговые подсказки, которые помогут им понять, как выполнить задачу самостоятельно. Также для таких подписчиков можно создать видео- или текстовые разборы задач, где будет показано, как шаг за шагом подойти к решению.
+Кроме того, пользователям с базовой подпиской можно выдавать рекомендации перейти на другой тариф, который предоставляет более подробное объяснение решений. Такие рекомендации могли бы находиться рядом с проблемными задачами и подчеркивать ценность повышения тарифа для более глубокого понимания и эффективного обучения.
+
