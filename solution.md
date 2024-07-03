@@ -195,16 +195,16 @@ with transaction_filter as(
 		count(*) as cnt
 	from transaction
 	where type_id in (23,24,25,27) and value > 0
-	group by user_id, type_id)
+	group by user_id, type_id) --отбираем только нужные транзакции и считаем количество с разбивкой по пользователям и типу
 select
-	sum(case when type_id = 23 then 1 else 0 end) as cnt_users_open_tasks,
-	sum(case when type_id = 27 then 1 else 0 end) as cnt_users_open_tests,
-	sum(case when type_id = 24 then 1 else 0 end) as cnt_users_open_hints,
-	sum(case when type_id = 25 then 1 else 0 end) as cnt_users_buying_solution,
-	sum(case when type_id = 23 then cnt else 0 end) as cnt_open_tasks,
-	sum(case when type_id = 27 then cnt else 0 end) as cnt_open_tests,
-	sum(case when type_id = 24 then cnt else 0 end) as cnt_open_hints,
-	sum(case when type_id = 25 then cnt else 0 end) as cnt_buying_solution,
+	sum(case when type_id = 23 then 1 else 0 end) as cnt_users_open_tasks, -- сколько пользователей открыло задач
+	sum(case when type_id = 27 then 1 else 0 end) as cnt_users_open_tests, -- сколько пользователей открыло тесты
+	sum(case when type_id = 24 then 1 else 0 end) as cnt_users_open_hints, -- сколько пользователей открыло подсказки
+	sum(case when type_id = 25 then 1 else 0 end) as cnt_users_buying_solution, -- сколько пользователей открыли решений
+	sum(case when type_id = 23 then cnt else 0 end) as cnt_open_tasks, --сколько открыто задач
+	sum(case when type_id = 27 then cnt else 0 end) as cnt_open_tests, --сколько открыто тестов
+	sum(case when type_id = 24 then cnt else 0 end) as cnt_open_hints, 
+	sum(case when type_id = 25 then cnt else 0 end) as cnt_buying_solution, 
 	count(distinct user_id) as users_who_buying,
 	(select 
 		count(distinct user_id) 
@@ -258,25 +258,25 @@ with users_act as(
 		to_char(created_at, 'YYYY-MM') as month,
 		user_id
 	from teststart t 
-	),
+	), --соединили все таблицы с активностями и вытащили месяц и год из даты
 cnt_reg_users as(
 	select
 		 to_char(date_joined, 'YYYY-MM') as month,
 		 count(distinct id) as cnt_registr
 	from users
-	group by month),
+	group by month), -- считаем количество регистраций по месяцам
 cnt_act_users as(
 	select
 		month,
 		count(distinct user_id) as cnt_activities
 	from users_act
-	group by month),
+	group by month), -- считаем активности пользователей по месяцам
 cnt_us_inputs as (
 	select
 		to_char(entry_at, 'YYYY-MM') as month,
 		count(distinct user_id) as cnt_users_inputs
 	from userentry u 
-	group by month)
+	group by month)-- считаем заходы на сайт уникальных пользователей по месяцм
 select
 	cau.month,
 	coalesce(cnt_registr,0) as cnt_registr,
@@ -287,7 +287,7 @@ full join cnt_act_users cau
 on cau.month = cru.month
 full join cnt_us_inputs cui
 on cau.month = cui.month
-order by cru.month
+order by cru.month  --в конечном запросе мы склеили данные о количетсве регистраций, активностей, заходов на сайт с разбивкой по месяцам. Пропуски заменили на значение 0
 ```
 ```
 month  |cnt_registr|cnt_activities|cnt_users_inputs|
@@ -312,7 +312,7 @@ month  |cnt_registr|cnt_activities|cnt_users_inputs|
 
 2. Посчитаем с разбивкой по языкам программирование какие задания и в каком количестве вызывают затруднения у пользователей.
 ```sql
-with difficult_tasks_py as(
+with difficult_tasks_py as( -- считаем количество неверных ответов по каждой задаче на языке пайтон
 	select
 		problem_id, 
 		name, 
@@ -324,7 +324,7 @@ with difficult_tasks_py as(
 	group by problem_id, name
 	order by sum desc
 ),
-difficult_tasks_sql as(
+difficult_tasks_sql as( -- считаем количество неверных ответов по каждой задаче на языке скл
 	select 
 			problem_id, 
 			name, 
@@ -335,19 +335,20 @@ difficult_tasks_sql as(
 	where language_id = 3
 	group by problem_id, name
 	order by sum desc
-)
-select
+) -- далее в запросе отбираем наиболее проблемные вопросы и количетсво неверных ответов по каждому языку (я отобрала те вопросы, на которые неправильных ответов больше, чем в среднем в 1,5 раза)
+select 
 	 problem_id, 
-	 name, sum from
-	difficult_tasks_sql
-	where sum > (select avg(sum) from difficult_tasks_py) * 1.5
-	union all
+	 name,
+	 sum
+from difficult_tasks_sql
+where sum > (select avg(sum) from difficult_tasks_py) * 1.5
+union all
 	select
 		 problem_id, 
 		 name, 
 		 sum
-  from difficult_tasks_py
- where sum > (select avg(sum) from difficult_tasks_py) * 1.5
+  	from difficult_tasks_py
+        where sum > (select avg(sum) from difficult_tasks_py) * 1.5
  ```
  ```
  problem_id|name  |sum|
@@ -382,4 +383,60 @@ select
    ``` 
 Так как на платформе имеется достаточно большое количество задач, вызывающих трудности, это представляет хорошую возможность для внедрения платной подписки. Для платных подписчиков можно предложить более детализированные и пошаговые подсказки, которые помогут им понять, как выполнить задачу самостоятельно. Также для таких подписчиков можно создать видео- или текстовые разборы задач, где будет показано, как шаг за шагом подойти к решению.
 Кроме того, пользователям с базовой подпиской можно выдавать рекомендации перейти на другой тариф, который предоставляет более подробное объяснение решений. Такие рекомендации могли бы находиться рядом с проблемными задачами и подчеркивать ценность повышения тарифа для более глубокого понимания и эффективного обучения.
-
+## **Дополнительное задание 2**
+Для выгрузки данных используем SQL-запрос:
+```sql
+ with a as(
+	 select
+		to_char(created_at, 'HH24:00') as hour, -- Соединяем все записи об активностях пользователей
+		to_char(created_at, 'dy') as day,
+		problem_id
+	from coderun
+	union all
+	select
+		to_char(created_at, 'HH24:00') as hour,
+		to_char(created_at, 'dy') as day,
+		problem_id
+	from codesubmit c
+	union all
+	select
+		to_char(created_at, 'HH24:00') as hour,
+		to_char(created_at, 'dy') as day,
+		test_id
+	from teststart t
+	)
+select
+	distinct(hour),
+	count(case when day ='mon' then problem_id else null end) as mon, -- Считаем по дням с разбивкой по часам количество активностей на сайте
+	count(case when day ='tue' then problem_id else null end) as tue,
+	count(case when day ='wed' then problem_id else null end) as wed,
+	count(case when day ='thu' then problem_id else null end) as thu,
+	count(case when day ='fri' then problem_id else null end) as fri,
+	count(case when day ='sat' then problem_id else null end) as sat,
+	count(case when day ='sun' then problem_id else null end) as sun
+from a
+group by hour
+order by hour
+```
+Для загрузки данных и построения графика используем такой код:
+```python
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv('days_and_time.csv')
+df.set_index('hour', inplace=True) # Устанавливаем 'hour' в качестве индекса для удобства
+plt.figure(figsize=(15, 7))
+for column in df.columns:
+    plt.plot(df.index, df[column], label=column) #  Показываем график для всех дней недели
+# Настройка графика
+plt.xlabel('Время')
+plt.ylabel('Количетсво пользователей')
+plt.title('Количество пользователей по времени и дню недели')
+plt.legend(title='Дни недели')
+plt.grid(True)
+plt.xticks(rotation=45) # Поворачиваем метки по оси X для удобства чтения
+plt.tight_layout() # Для оптимального размещения всех элементов
+plt.show()
+```
+![График](output.png)
+Выводы:
+В течение дня пик активности происходит в период с 10:00 до 14:00. Наиболее активны пользователи в среду и четверг. Самая низкая активность наблюдается с 00 часов до 3 часов ночи, своего минимум в это время достигает в воскресенье. Оптимальным временем для добавления нового функционала будет воскресенье в период с 12 до 3 часов ночи. Если такого интервала будет недостаточно для загрузки, то можно продолжить в другие дни в такой же временной интервал. Для всех дней недели этот промежуток является самым низким по показателям активности пользователей
